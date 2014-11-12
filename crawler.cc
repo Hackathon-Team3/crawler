@@ -10,8 +10,59 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <curl/curl.h>
+#include <boost/property_tree/info_parser.hpp>
 
+/* Standard C++ includes */
+#include <stdlib.h>
+#include <iostream>
+
+/*
+  Include directly the different
+  headers from cppconn/ and mysql_driver.h + mysql_util.h
+  (and mysql_connection.h). This will reduce your build time!
+*/
+#include "mysql-connector-c++-1.1.4-linux-debian6.0-x86-64bit/include/mysql_connection.h"
+#include "mysql-connector-c++-1.1.4-linux-debian6.0-x86-64bit/include/mysql_driver.h"
+
+#include <cppconn/driver.h>
+#include <cppconn/exception.h>
+#include <cppconn/resultset.h>
+#include <cppconn/statement.h>
+#include <cppconn/prepared_statement.h>
+
+using namespace std;
 using std::cout;
+
+void updateDB(std::string const& url, std::string const& mdata) {
+  // using namespace sql::mysql;
+
+  try {
+    sql::Driver *driver;
+    sql::Connection *con;
+    sql::PreparedStatement *stmt;
+
+    /* Create a connection */
+    driver = get_driver_instance();
+    con = driver->connect("tcp://hackathon-marsrovers.cgaxek1tv5pz.us-west-1.rds.amazonaws.com:3306",
+			  "roveruser", "wqeindsa235");
+    /* Connect to the MySQL test database */
+    con->setSchema("hackathon_marsrovers");
+
+    stmt = con->prepareStatement("INSERT INTO images(URL, metadata) VALUES (?, ?)");
+    stmt->setString(1, url);
+    stmt->setString(2, mdata);
+    stmt->executeUpdate();
+    delete stmt;
+    delete con;
+  } catch (sql::SQLException &e) {
+    cout << "# ERR: SQLException in " << __FILE__;
+    cout << "(" << __FUNCTION__ << ") on line "
+	 << __LINE__ << endl;
+    cout << "# ERR: " << e.what();
+    cout << " (MySQL error code: " << e.getErrorCode();
+    cout << ", SQLState: " << e.getSQLState() << " )" << endl;
+  }
+}
 
 size_t AppendDataToStringCurlCallback(void *ptr, size_t size, size_t nmemb,
                                       void *vstring) {
@@ -48,7 +99,14 @@ void processImagesHelper(boost::property_tree::ptree *pt,
         for (boost::property_tree::ptree::value_type &img :
                  imgs.second.get_child("images.")) {
             std::string url = img.second.get<std::string>("url");
+	    write_json("tmp.txt", img.second);
+	    std::ifstream t("tmp.txt");
+	    std::stringstream buffer;
+	    buffer << t.rdbuf();
+	    std::string mdata = buffer.str();
             cout << "Img url: " << url << "\n";
+	    // cout << "Mdata: " << mdata << "\n";
+	    updateDB(url, mdata);
         }
     }
 }
@@ -110,6 +168,8 @@ int main() {
         std::cout << merb << "\n";
         std::string msl = pt.get<std::string>("MSL.image_manifest");
         std::cout << msl << "\n";
+
+	//updateDB("http://my.img.test", "{json}");
 
         processSols(mera);
         processSols(merb);
